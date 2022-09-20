@@ -28,7 +28,8 @@ app.config['CORS_HEADERS'] = 'Content-Type'
 
 @app.route('/referee/readRFIDTag', methods=['GET'])
 def readRFIDTag():
-    responseFromEsp = readTag()
+    comPortESP = findComPort()
+    responseFromEsp = readTag(comPortESP)
     return responseFromEsp
     
 
@@ -47,8 +48,7 @@ def readLapTime():
 
 
 def readTag(COM_PORT="COM7"):
-    comPortESP = findComPort()
-    ser = serial.Serial(comPortESP, 115200)
+    ser = serial.Serial(COM_PORT, 115200)
     ser.write(b'2')    ## dwojka za odczyt RFID 
     to_continue = True
     while to_continue:
