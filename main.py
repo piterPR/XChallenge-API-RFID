@@ -40,6 +40,18 @@ def readLapTime():
     return "124542"
 
 
+@app.route('/testLED_ON', methods=['GET'])
+def testLED_ON():
+    comPortESP = findComPort()
+    ser = serial.Serial(comPortESP, 115200)
+    ser.write(b'0')
+
+@app.route('/testLED_OFF', methods=['GET'])
+def testLED_OFF():
+    comPortESP = findComPort()
+    ser = serial.Serial(comPortESP, 115200)
+    ser.write(b'1')
+    
 
 
 ###########################################################################################################################################################################
