@@ -18,8 +18,7 @@ import os
 app = Flask(__name__)
 cors = CORS(app)
 app.config['CORS_HEADERS'] = 'Content-Type'
-
-
+comPortESP = None
 
 ###########################################################################################################################################################################
 # API
@@ -28,7 +27,6 @@ app.config['CORS_HEADERS'] = 'Content-Type'
 
 @app.route('/referee/readRFIDTag', methods=['GET'])
 def readRFIDTag():
-    comPortESP = findComPort()
     responseFromEsp = readTag(comPortESP)
     return responseFromEsp
     
@@ -40,6 +38,9 @@ def readLapTime():
     return "124542"
 
 
+# @app.route('/flashDiode', methods=['GET'])
+# def readLapTime():
+#     return "124542"
 
 
 ###########################################################################################################################################################################
@@ -81,6 +82,7 @@ def findComPort():
 
 
 if __name__ == "__main__":
+    comPortESP = findComPort()
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=True, host='127.0.0.1', port=port)
     
