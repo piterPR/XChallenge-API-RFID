@@ -6,7 +6,7 @@ from flask_cors import CORS, cross_origin
 import serial.tools.list_ports
 import time
 import sys
-from error_handler import NoSpecifiedParamsError, RFIDCardError, WrongPatternError, WrongPatternError, error_handler, check_is_error_code, MaxTimeoutError
+from error_handler import NoCOMPortFindedError, NoSpecifiedParamsError, RFIDCardError, WrongPatternError, error_handler, check_is_error_code, MaxTimeoutError
 import re
 
 ###########################################################################################################################################################################
@@ -28,6 +28,7 @@ cors = CORS(app)
 app.config['CORS_HEADERS'] = 'Content-Type'
 comPortESP = findComPort()
 maxAwaitTimeInSeconds = 5
+maxLapTimeInSeconds = 120
 
 ###########################################################################################################################################################################
 # API ENDPOINTS
@@ -43,20 +44,24 @@ def writedRFIDTag():
     data = request.get_json()
     return writeTag(data)
 
-@app.route('/referee/readLapTime', methods=['GET'])
-def readLapTime():
-    return "124542"
+@app.route('/referee/eraseRFIDTag', methods=['GET'])
+def eraseRFIDTag():
+    return eraseRFIDTag()
+
+@app.route('/referee/readOneGate', methods=['GET'])
+def readOneGate():
+    return readOneGate()
 
 @app.route('/testLED_ON', methods=['GET'])
 def testLED_ON():
     ser = serial.Serial(comPortESP, 115200)
-    ser.write(b'0')
+    ser.write(b'1')
     return "ON"
 
 @app.route('/testLED_OFF', methods=['GET'])
 def testLED_OFF():
     ser = serial.Serial(comPortESP, 115200)
-    ser.write(b'1')
+    ser.write(b'0')
     return "OFF"
 
 ###########################################################################################################################################################################
@@ -74,18 +79,20 @@ def readTag():
     while returnValue == None and int(time.time() - beginTime) < maxAwaitTimeInSeconds:
         if ser.in_waiting:
             response = str(ser.readline())
-            errorCode = check_is_error_code(response)
-            if errorCode != None:
-                return error_handler(RFIDCardError(errType=errorCode))
             print(response)
+            errorCode = check_is_error_code(response)
             stopUid = "b'UID:"
             if(stopUid in response):
                 returnValue = response[55:58]
                 print(returnValue)
                 ser.close()
+            else:
+                if errorCode != None:
+                    return error_handler(RFIDCardError(errType=errorCode))
     if returnValue != None:
         if not re.search("^[0-9]{3}$", returnValue):
-            return error_handler(WrongPatternError())
+            return error_handler(WrongPatternError(returnValue))
+        ser.close()
         return jsonify(returnValue)
     else:
         ser.close()
@@ -96,7 +103,7 @@ def writeTag(requestData):
         return error_handler(NoSpecifiedParamsError(paramName="uzytkownik_id"))
     id = str(requestData["uzytkownik_id"])
     if not re.search("^[0-9]{1,3}$", id):
-        return error_handler(WrongPatternError())
+        return error_handler(WrongPatternError(id))
     while len(id) < 3: id = "0" + id
     try:
         ser = serial.Serial(comPortESP, 115200)
@@ -105,22 +112,72 @@ def writeTag(requestData):
     beginTime = time.time()
     returnValue = None
     ser.write(bytearray(id, 'utf-8'))
-    if ser.in_waiting:
-        response = str(ser.readline())
-        print(response)
-    # while returnValue == None and int(time.time() - beginTime) < maxAwaitTimeInSeconds:
-    # if returnValue != None:
-    #     # if not re.search("^[0-9]{3}$", returnValue):
-    #     #     return error_handler(WrongPatternError())
-    return jsonify("ASD")
-    # else:
-    #     ser.close()
-    #     return error_handler(MaxTimeoutError())
+    while returnValue == None and int(time.time() - beginTime) < maxAwaitTimeInSeconds:
+        if ser.in_waiting:
+            response = str(ser.readline())
+            print(response)
+            errorCode = check_is_error_code(response)
+            if errorCode == "-100":
+                ser.close()
+                return readTag()
+    ser.close()
+    return error_handler(MaxTimeoutError())
 
+def eraseRFIDTag():
+    try:
+        ser = serial.Serial(comPortESP, 115200)
+        ser.write(b'4')    ## trojka za zapis RFID
+    except Exception as e: return error_handler(e)
+    beginTime = time.time()
+    returnValue = None
+    while returnValue == None and int(time.time() - beginTime) < maxAwaitTimeInSeconds:
+        if ser.in_waiting:
+            response = str(ser.readline())
+            print(response)
+            errorCode = check_is_error_code(response)
+            if errorCode != None:
+                    return error_handler(RFIDCardError(errType=errorCode))
+    if returnValue != None:
+        ser.close()
+        return jsonify(returnValue)
+    else:
+        # ser.write(b'0')
+        ser.close()
+        return error_handler(MaxTimeoutError())
+
+def readOneGate():
+    try:
+        ser = serial.Serial(comPortESP, 115200)
+        ser.write(b'5')    ## trojka za zapis RFID
+    except Exception as e: return error_handler(e)
+    beginTime = time.time()
+    returnValue = None
+    while returnValue == None and int(time.time() - beginTime) < maxLapTimeInSeconds:
+        if ser.in_waiting:
+            response = str(ser.readline())
+            print(response)
+            errorCode = check_is_error_code(response)
+            if errorCode != None:
+                    return error_handler(RFIDCardError(errType=errorCode))
+            if "Odliczam czas" in response:
+                ser.write(b'1')
+            elif "Czas przejazdu" in response:
+                returnValue = response[18:].split('.')[0]
+                print(str(returnValue))
+    if returnValue != None:
+        if not re.search("^[0-9]{4,}$", returnValue):
+            return error_handler(WrongPatternError(returnValue))
+        ser.write(b'0')
+        ser.close()
+        return jsonify(returnValue)
+    else:
+        ser.write(b'0')
+        ser.close()
+        return error_handler(MaxTimeoutError())
 
 if __name__ == "__main__":
     if comPortESP == None:
-        print("Nie znaleziono podlaczonego ESP")
+        error_handler(NoCOMPortFindedError())
         sys.exit()
     port = int(os.environ.get('PORT', 5000))
     app.run(debug=True, host='127.0.0.1', port=port)
