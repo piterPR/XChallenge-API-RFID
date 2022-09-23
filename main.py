@@ -13,7 +13,6 @@ import re
 # ENVS AND SETUP AND PRE-FLIGHT CHECKS
 ###########################################################################################################################################################################
 
-
 from flask import Flask, jsonify, request,render_template
 import os
 
@@ -25,6 +24,8 @@ def findComPort():
 
 app = Flask(__name__)
 cors = CORS(app)
+host = "127.0.0.1"
+port = 5000
 app.config['CORS_HEADERS'] = 'Content-Type'
 comPortESP = findComPort()
 maxAwaitTimeInSeconds = 5
@@ -33,7 +34,6 @@ maxLapTimeInSeconds = 120
 ###########################################################################################################################################################################
 # API ENDPOINTS
 ###########################################################################################################################################################################
-
 
 @app.route('/referee/readRFIDTag', methods=['GET'])
 def readRFIDTag():
@@ -52,6 +52,10 @@ def eraseRFIDTag():
 def readOneGate():
     return readOneGate()
 
+@app.route('/referee/readTwoGates', methods=['GET'])
+def readTwoGates():
+    return readTwoGates()
+
 @app.route('/testLED_ON', methods=['GET'])
 def testLED_ON():
     ser = serial.Serial(comPortESP, 115200)
@@ -68,12 +72,19 @@ def testLED_OFF():
 # FUNCIONS
 ###########################################################################################################################################################################
 
+def openSerialPort():
+    ser = serial.Serial(comPortESP, 115200)
+    time.sleep(0.1)
+    while(ser.in_waiting):
+        ser.readline()
+    return ser
 
 def readTag():
     try:
-        ser = serial.Serial(comPortESP, 115200)
+        ser = openSerialPort()
         ser.write(b'2')    ## dwojka za odczyt RFID
-    except Exception as e: return error_handler(e)
+    except Exception as e:
+        return error_handler(e)
     beginTime = time.time()
     returnValue = None
     while returnValue == None and int(time.time() - beginTime) < maxAwaitTimeInSeconds:
@@ -85,14 +96,13 @@ def readTag():
             if(stopUid in response):
                 returnValue = response[55:58]
                 print(returnValue)
-                ser.close()
             else:
                 if errorCode != None:
                     return error_handler(RFIDCardError(errType=errorCode))
     if returnValue != None:
+        ser.close()
         if not re.search("^[0-9]{3}$", returnValue):
             return error_handler(WrongPatternError(returnValue))
-        ser.close()
         return jsonify(returnValue)
     else:
         ser.close()
@@ -106,9 +116,10 @@ def writeTag(requestData):
         return error_handler(WrongPatternError(id))
     while len(id) < 3: id = "0" + id
     try:
-        ser = serial.Serial(comPortESP, 115200)
+        ser = openSerialPort()
         ser.write(b'3')    ## trojka za zapis RFID
-    except Exception as e: return error_handler(e)
+    except Exception as e:
+        return error_handler(e)
     beginTime = time.time()
     returnValue = None
     ser.write(bytearray(id, 'utf-8'))
@@ -120,14 +131,17 @@ def writeTag(requestData):
             if errorCode == "-100":
                 ser.close()
                 return readTag()
+            elif errorCode != None:
+                return error_handler(RFIDCardError(errType=errorCode))
     ser.close()
     return error_handler(MaxTimeoutError())
 
 def eraseRFIDTag():
     try:
-        ser = serial.Serial(comPortESP, 115200)
+        ser = openSerialPort()
         ser.write(b'4')    ## trojka za zapis RFID
-    except Exception as e: return error_handler(e)
+    except Exception as e:
+        return error_handler(e)
     beginTime = time.time()
     returnValue = None
     while returnValue == None and int(time.time() - beginTime) < maxAwaitTimeInSeconds:
@@ -141,15 +155,48 @@ def eraseRFIDTag():
         ser.close()
         return jsonify(returnValue)
     else:
-        # ser.write(b'0')
         ser.close()
         return error_handler(MaxTimeoutError())
 
 def readOneGate():
     try:
-        ser = serial.Serial(comPortESP, 115200)
+        ser = openSerialPort()
         ser.write(b'5')    ## trojka za zapis RFID
-    except Exception as e: return error_handler(e)
+    except Exception as e:
+        return error_handler(e)
+    beginTime = time.time()
+    returnValue = None
+    awaitTime = maxAwaitTimeInSeconds
+    while returnValue == None and int(time.time() - beginTime) < awaitTime:
+        if ser.in_waiting:
+            response = str(ser.readline())
+            print(response)
+            errorCode = check_is_error_code(response)
+            if errorCode != None:
+                    return error_handler(RFIDCardError(errType=errorCode))
+            if "Odliczam czas" in response:
+                awaitTime = maxLapTimeInSeconds
+                beginTime = time.time()
+                ser.write(b'1')
+            elif "Czas przejazdu" in response:
+                returnValue = response[18:].split('.')[0]
+                print(str(returnValue))
+    if returnValue != None:
+        if not re.search("^[0-9]{4,}$", returnValue):
+            return error_handler(WrongPatternError(returnValue))
+        ser.write(b'0')
+        ser.close()
+        return jsonify(returnValue)
+    else:
+        ser.close()
+        return error_handler(MaxTimeoutError())
+
+def readTwoGates():
+    try:
+        ser = openSerialPort()
+        ser.write(b'6')    ## trojka za zapis RFID
+    except Exception as e:
+        return error_handler(e)
     beginTime = time.time()
     returnValue = None
     while returnValue == None and int(time.time() - beginTime) < maxLapTimeInSeconds:
@@ -179,12 +226,10 @@ if __name__ == "__main__":
     if comPortESP == None:
         error_handler(NoCOMPortFindedError())
         sys.exit()
-    port = int(os.environ.get('PORT', 5000))
-    app.run(debug=True, host='127.0.0.1', port=port)
-
-
-
-
+    from waitress import serve
+    print("Server is listening on " + host + ":" + str(port))
+    testLED_OFF()
+    serve(app, host=host, port=port)
 
 
 
