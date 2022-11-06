@@ -1,26 +1,23 @@
-import datetime
 import serial
-import pandas as pd
-from flask import Flask,json, render_template, request, jsonify
-from flask_cors import CORS, cross_origin
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import serial.tools.list_ports
 import time
 import sys
-from error_handler import NoCOMPortFindedError, NoSpecifiedParamsError, RFIDCardError, WrongPatternError, error_handler, check_is_error_code, MaxTimeoutError
+from error_handler import NoCOMPortFindedError, NoSpecifiedParamsError, RFIDCardError, WrongPatternError, buildResponseMessage, error_handler, check_is_error_code, MaxTimeoutError
 import re
 
 ###########################################################################################################################################################################
 # ENVS AND SETUP AND PRE-FLIGHT CHECKS
 ###########################################################################################################################################################################
 
-from flask import Flask, jsonify, request,render_template
-import os
 
-def findComPort(): 
+def findComPort():
     ports = list(serial.tools.list_ports.comports())
     for p in ports:
-        if "Silicon Labs CP210x" in p.description: 
+        if "Silicon Labs CP210x" in p.description:
             return str(p.name)
+
 
 app = Flask(__name__)
 cors = CORS(app)
@@ -35,42 +32,50 @@ maxLapTimeInSeconds = 120
 # API ENDPOINTS
 ###########################################################################################################################################################################
 
+
 @app.route('/referee/readRFIDTag', methods=['GET'])
 def readRFIDTag():
     return readTag()
+
 
 @app.route('/referee/writeRFIDTag', methods=['POST'])
 def writedRFIDTag():
     data = request.get_json()
     return writeTag(data)
 
+
 @app.route('/referee/eraseRFIDTag', methods=['GET'])
 def eraseRFIDTag():
     return eraseRFIDTag()
+
 
 @app.route('/referee/readOneGate', methods=['GET'])
 def readOneGate():
     return readOneGate()
 
+
 @app.route('/referee/readTwoGates', methods=['GET'])
 def readTwoGates():
     return readTwoGates()
+
 
 @app.route('/testLED_ON', methods=['GET'])
 def testLED_ON():
     ser = serial.Serial(comPortESP, 115200)
     ser.write(b'1')
-    return "ON"
+    return buildResponseMessage("ON", "-100", "Sukces")
+
 
 @app.route('/testLED_OFF', methods=['GET'])
 def testLED_OFF():
     ser = serial.Serial(comPortESP, 115200)
     ser.write(b'0')
-    return "OFF"
+    return buildResponseMessage("OFF", "-100", "Sukces")
 
 ###########################################################################################################################################################################
 # FUNCIONS
 ###########################################################################################################################################################################
+
 
 def openSerialPort():
     ser = serial.Serial(comPortESP, 115200)
@@ -79,10 +84,11 @@ def openSerialPort():
         ser.readline()
     return ser
 
+
 def readTag():
     try:
         ser = openSerialPort()
-        ser.write(b'2')    ## dwojka za odczyt RFID
+        ser.write(b'2')  # dwojka za odczyt RFID
     except Exception as e:
         return error_handler(e)
     beginTime = time.time()
@@ -103,10 +109,11 @@ def readTag():
         ser.close()
         if not re.search("^[0-9]{3}$", returnValue):
             return error_handler(WrongPatternError(returnValue))
-        return jsonify(returnValue)
+        return buildResponseMessage({"uzytkownik_id": int(returnValue)}, "-100", "Sukces")
     else:
         ser.close()
         return error_handler(MaxTimeoutError())
+
 
 def writeTag(requestData):
     if not "uzytkownik_id" in requestData:
@@ -114,10 +121,11 @@ def writeTag(requestData):
     id = str(requestData["uzytkownik_id"])
     if not re.search("^[0-9]{1,3}$", id):
         return error_handler(WrongPatternError(id))
-    while len(id) < 3: id = "0" + id
+    while len(id) < 3:
+        id = "0" + id
     try:
         ser = openSerialPort()
-        ser.write(b'3')    ## trojka za zapis RFID
+        ser.write(b'3')  # zapis RFID
     except Exception as e:
         return error_handler(e)
     beginTime = time.time()
@@ -136,10 +144,11 @@ def writeTag(requestData):
     ser.close()
     return error_handler(MaxTimeoutError())
 
+
 def eraseRFIDTag():
     try:
         ser = openSerialPort()
-        ser.write(b'4')    ## trojka za zapis RFID
+        ser.write(b'4')  # cz za zapis RFID
     except Exception as e:
         return error_handler(e)
     beginTime = time.time()
@@ -150,18 +159,19 @@ def eraseRFIDTag():
             print(response)
             errorCode = check_is_error_code(response)
             if errorCode != None:
-                    return error_handler(RFIDCardError(errType=errorCode))
+                return error_handler(RFIDCardError(errType=errorCode))
     if returnValue != None:
         ser.close()
-        return jsonify(returnValue)
+        return buildResponseMessage(returnValue, "-100", "Sukces")
     else:
         ser.close()
         return error_handler(MaxTimeoutError())
 
+
 def readOneGate():
     try:
         ser = openSerialPort()
-        ser.write(b'5')    ## trojka za zapis RFID
+        ser.write(b'5')  # trojka za zapis RFID
     except Exception as e:
         return error_handler(e)
     beginTime = time.time()
@@ -173,7 +183,7 @@ def readOneGate():
             print(response)
             errorCode = check_is_error_code(response)
             if errorCode != None:
-                    return error_handler(RFIDCardError(errType=errorCode))
+                return error_handler(RFIDCardError(errType=errorCode))
             if "Odliczam czas" in response:
                 awaitTime = maxLapTimeInSeconds
                 beginTime = time.time()
@@ -186,15 +196,16 @@ def readOneGate():
             return error_handler(WrongPatternError(returnValue))
         ser.write(b'0')
         ser.close()
-        return jsonify(returnValue)
+        return buildResponseMessage({"czas_przejazdu": returnValue}, "-100", "Sukces")
     else:
         ser.close()
         return error_handler(MaxTimeoutError())
 
+
 def readTwoGates():
     try:
         ser = openSerialPort()
-        ser.write(b'6')    ## trojka za zapis RFID
+        ser.write(b'6')
     except Exception as e:
         return error_handler(e)
     beginTime = time.time()
@@ -205,7 +216,7 @@ def readTwoGates():
             print(response)
             errorCode = check_is_error_code(response)
             if errorCode != None:
-                    return error_handler(RFIDCardError(errType=errorCode))
+                return error_handler(RFIDCardError(errType=errorCode))
             if "Odliczam czas" in response:
                 ser.write(b'1')
             elif "Czas przejazdu" in response:
@@ -216,11 +227,12 @@ def readTwoGates():
             return error_handler(WrongPatternError(returnValue))
         ser.write(b'0')
         ser.close()
-        return jsonify(returnValue)
+        return buildResponseMessage(jsonify(returnValue), "-100", "Sukces")
     else:
         ser.write(b'0')
         ser.close()
         return error_handler(MaxTimeoutError())
+
 
 if __name__ == "__main__":
     if comPortESP == None:
@@ -230,6 +242,3 @@ if __name__ == "__main__":
     print("Server is listening on " + host + ":" + str(port))
     testLED_OFF()
     serve(app, host=host, port=port)
-
-
-
