@@ -227,7 +227,7 @@ def readTwoGates():
             return error_handler(WrongPatternError(returnValue))
         ser.write(b'0')
         ser.close()
-        return buildResponseMessage(jsonify(returnValue), "-100", "Sukces")
+        return buildResponseMessage({"czas_przejazdu": returnValue}, "-100", "Sukces")
     else:
         ser.write(b'0')
         ser.close()
