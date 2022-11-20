@@ -26,7 +26,7 @@ port = 5000
 app.config['CORS_HEADERS'] = 'Content-Type'
 comPortESP = findComPort()
 maxAwaitTimeInSeconds = 5
-maxLapTimeInSeconds = 120
+maxLapTimeInSeconds = 240
 
 ###########################################################################################################################################################################
 # API ENDPOINTS
