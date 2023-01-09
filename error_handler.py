@@ -11,11 +11,11 @@ errorCodes = [
     "-7",   # Problem z zapisem danych do karty
     "-8",   # Sukces
     "-9",   # Błąd czytnika RFID
-    # -10   # Nie otworzono portu szeregowego
-    # -11   # Nie znaleziono podlaczonego ESP
-    # -12   # Pattern
-    # -13   # Brak wymaganych danych
-    # -14   # Nierozpoznany błąd
+    "-10",  # Nie otworzono portu szeregowego
+    "-11",  # Nie znaleziono podlaczonego ESP
+    "-12",  # Pattern
+    "-13",  # Brak wymaganych danych
+    "-14"   # Nierozpoznany błąd
 ]
 
 def buildResponseMessage(body, errCode, status = "Error"):
